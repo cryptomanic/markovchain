@@ -3,13 +3,14 @@
 #include <Rcpp.h>
 
 using namespace Rcpp;
+using namespace RcppArmadillo;
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.markovchainSequenceRcpp)]]
 CharacterVector markovchainSequenceRcpp(int n, S4 markovchain, CharacterVector t0,
                                        bool include_t0 = false) {
   
   // character vector to store the result
-  CharacterVector chain = CharacterVector::create();
+  CharacterVector chain(n);
   
   // transition mastrix
   NumericMatrix transitionMatrix = markovchain.slot("transitionMatrix");
@@ -19,6 +20,11 @@ CharacterVector markovchainSequenceRcpp(int n, S4 markovchain, CharacterVector t
     
   // current state
   CharacterVector state = t0;
+  
+  NumericVector rowProbs(states.size());
+  CharacterVector outstate;
+  
+  
   
   for(int i = 0;i < n;i++) {
     
@@ -31,14 +37,13 @@ CharacterVector markovchainSequenceRcpp(int n, S4 markovchain, CharacterVector t
       }
     }
   
-    NumericVector rowProbs = NumericVector::create();
     for(int j = 0; j < states.size(); j++) {
-      rowProbs.push_back(transitionMatrix(row_no, j));
+      rowProbs[j] = transitionMatrix(row_no, j);
     }
     
     // calculate next state
-    CharacterVector outstate = RcppArmadillo::sample(states, 1, false, rowProbs);
-    chain.push_back(outstate[0]);  
+    outstate = sample(states, 1, false, rowProbs);
+    chain[i] = outstate[0];  
     state = outstate;
     
   }
@@ -58,15 +63,16 @@ bool checkSequenceRcpp(List object) {
     return(true);
   
   S4 ob0, ob1;
+  CharacterVector statesNm1, statesN, intersection;
   
   for(int i = 1; i < nob;i++) {
     ob0 = S4(object[i-1]);
     ob1 = S4(object[i]);
     
-    CharacterVector statesNm1 = ob0.slot("states"); 
-    CharacterVector statesN = ob1.slot("states");
+    statesNm1 = ob0.slot("states"); 
+    statesN = ob1.slot("states");
     
-    CharacterVector intersection = intersect(statesNm1, statesN);
+    intersection = intersect(statesNm1, statesN);
     if(not setequal(intersection, statesNm1)) {
       out = false;
       break;
@@ -75,8 +81,8 @@ bool checkSequenceRcpp(List object) {
   return(out);
 }
 
-// [[Rcpp::export]]
-List markovchainListRcpp(int n, List object) {
+// [[Rcpp::export(.markovchainListRcpp)]]
+List markovchainListRcpp(int n, List object, bool include_t0 = false) {
   bool verify = checkSequenceRcpp(object);
   
   if (not verify) {
@@ -88,16 +94,16 @@ List markovchainListRcpp(int n, List object) {
   CharacterVector values = CharacterVector::create();
   S4 ob(object[0]);
   
-  CharacterVector sampledValues;
+  CharacterVector sampledValues, newVals;
   IntegerVector outIter;
   
   for(int i = 0;i < n;i++) {
-    sampledValues = markovchainSequenceRcpp(1, object[0], CharacterVector(ob.slot("states")));
+    sampledValues = markovchainSequenceRcpp(1, object[0], CharacterVector(ob.slot("states")), include_t0);
     outIter = rep(i+1, sampledValues.size());
     
     if(object.size() > 1) {
       for(int j = 1;j < object.size();j++) {
-        CharacterVector newVals = markovchainSequenceRcpp(1, object[j], sampledValues);
+        newVals = markovchainSequenceRcpp(1, object[j], sampledValues, include_t0);
         outIter.push_back(i+1);
         sampledValues.push_back(newVals[0]);
       }
